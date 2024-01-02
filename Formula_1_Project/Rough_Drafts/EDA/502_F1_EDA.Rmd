@@ -1,0 +1,337 @@
+---
+title: "502_F1_EDA"
+author: "Cameron Bayer"
+date: "2023-10-24"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, message=FALSE}
+library(tidyverse)
+library(sf)
+library(mapview)
+options(warn = -1) 
+
+circuits = read_csv("f1db_csv/circuits.csv")
+constructor_results = read_csv("f1db_csv/constructor_results.csv")
+constructor_standings = read_csv("f1db_csv/constructor_standings.csv")
+constructors = read_csv("f1db_csv/constructors.csv")
+driver_standings = read_csv("f1db_csv/driver_standings.csv")
+drivers = read_csv("f1db_csv/drivers.csv")
+lap_times = read_csv("f1db_csv/lap_times.csv")
+pit_stops = read_csv("f1db_csv/pit_stops.csv")
+qualifying = read_csv("f1db_csv/qualifying.csv")
+races = read_csv("f1db_csv/races.csv")
+results = read_csv("f1db_csv/results.csv")
+sprint_results = read_csv("f1db_csv/sprint_results.csv")
+status = read_csv("f1db_csv/status.csv")
+```
+
+
+```{r echo=FALSE}
+# circuits 
+names(circuits)[3] = "Circuit"
+circuits = circuits%>%
+  select(-url)%>%
+  mutate(alt = as.integer(alt), 
+         circuitRef = factor(circuitRef),
+         location = factor(location),
+         country = factor(country))
+
+
+# constructor_results 
+names(constructor_results)[4] = "constructor_points"
+constructor_results = constructor_results%>%
+  select(-status)
+
+
+# constructor_standings 
+names(constructor_standings)[4] = "constructor_total_points"
+names(constructor_standings)[5] = "constructor_position"
+names(constructor_standings)[7] = "race_win"
+constructor_standings = constructor_standings%>%
+  select(-positionText)
+
+
+# constructors 
+names(constructors)[3] = "team"
+constructors = constructors%>%
+  select(-url)%>%
+  mutate(constructorRef = factor(constructorRef),
+         team = factor(team),
+         nationality = factor(nationality))
+
+
+# driver_standings 
+names(driver_standings)[4] = "driver_points"
+names(driver_standings)[5] = "driver_position"
+names(driver_standings)[7] = "driver_win"
+driver_standings = driver_standings%>%
+  select(-positionText)
+
+
+# drivers 
+names(drivers)[3] = "driver_number"
+names(drivers)[4] = "driver_code"
+names(drivers)[8] = "driver_nationality"
+drivers = drivers%>%
+  select(-url)%>%
+  mutate(driverRef = factor(driverRef),
+         driver_nationality = factor(driver_nationality))
+
+
+# lap_times 
+names(lap_times)[4] = "lap_times_position"
+names(lap_times)[5] = "lap_time"
+names(lap_times)[6] = "lap_time_milliseconds"
+
+
+# pit_stops 
+names(pit_stops)[3] = "stops"
+names(pit_stops)[5] = "pit_stop_time"
+names(pit_stops)[6] = "pit_stop_duration"
+names(pit_stops)[7] = "pit_stop_duration_milliseconds"
+pit_stops = pit_stops%>% 
+  mutate(pit_stop_duration = as.numeric(pit_stop_duration)) 
+
+
+# qualifying 
+names(qualifying)[5] = "driver_number"
+names(qualifying)[6] = "qualifying_position"
+
+
+# races 
+names(races)[5] = "grand_prix"
+names(races)[6] = "race_date"
+names(races)[7] = "race_time"
+races = races%>%
+  select(raceId:race_time)
+
+
+# results 
+names(results)[5] = "driver_number"
+names(results)[6] = "starting_grid_position"
+names(results)[7] = "race_position"
+names(results)[8] = "race_positionText"
+names(results)[9] = "race_positionOrder"
+names(results)[10] = "race_points"
+names(results)[11] = "race_laps"
+names(results)[12] = "race_time"
+names(results)[13] = "race_time_milliseconds"
+names(results)[14] = "race_fastestLap"
+names(results)[15] = "race_rank"
+names(results)[16] = "race_fastestLapTime"
+names(results)[17] = "race_fastestLapSpeed"
+drivers = drivers%>%
+  select(-driver_number)
+# results = results%>%
+#   mutate(milliseconds = as.numeric(milliseconds),
+#          fastestLap = as.numeric(fastestLap),
+#          rank = as.numeric(rank),
+#          fastestLapSpeed = as.numeric(fastestLapSpeed))
+
+
+# sprint_results 
+names(sprint_results)[5] = "driver_number"
+names(sprint_results)[6] = "sprint_grid"
+names(sprint_results)[7] = "sprint_position"
+names(sprint_results)[8] = "sprint_positionText"
+names(sprint_results)[9] = "sprint_positionOrder"
+names(sprint_results)[10] = "sprint_points"
+names(sprint_results)[11] = "sprint_laps"
+names(sprint_results)[12] = "sprint_time"
+names(sprint_results)[13] = "sprint_time_milliseconds"
+names(sprint_results)[14] = "sprint_fastestLap"
+names(sprint_results)[15] = "sprint_fastestLapTime"
+# sprint_results = sprint_results%>%
+#   mutate(milliseconds = as.numeric(milliseconds),
+#          fastestLap = as.numeric(fastestLap))
+```
+
+```{r echo=FALSE}
+years = races%>%
+  select(raceId, year)
+
+
+constructor_data = constructors%>%
+  full_join(constructor_standings, by = "constructorId")%>%
+  full_join(constructor_results, by = c("constructorId", "raceId"))%>%
+  full_join(years, by = "raceId")
+
+
+circuit_races =  circuits%>%
+  full_join(races, by = "circuitId")
+
+
+race_data = lap_times%>%
+  full_join(pit_stops, by = c("raceId", "driverId", "lap"))%>%
+  full_join(drivers, by = "driverId")
+
+
+standings_driver = driver_standings%>%
+  full_join(drivers, by = "driverId")%>%
+  full_join(races, by = "raceId")
+
+
+qualifying_data = qualifying%>%
+  full_join(drivers, by = "driverId")%>%
+  full_join(constructors, by = "constructorId")
+
+
+sprint_data = sprint_results%>%
+  full_join(drivers, by = "driverId")
+
+
+result_data = results%>%
+  full_join(drivers, by = "driverId")%>%
+  mutate(race_fastestLapSpeed = as.numeric(race_fastestLapSpeed))%>%
+  full_join(years, by = "raceId")
+```
+
+
+
+
+```{r echo=FALSE}
+constructor_bind = results%>%
+  select(raceId, driverId, constructorId)
+
+standings_driver = standings_driver%>%
+  full_join(constructor_bind, by = c("raceId", "driverId"))
+
+standings_driver = standings_driver%>%
+  full_join(constructors, by = "constructorId")
+
+races_ham = standings_driver%>%
+  filter(driverRef == "hamilton")
+```
+
+# Graph 1:
+
+```{r echo=FALSE, message=FALSE}
+ggplot(races_ham, aes(round, driver_points, group = factor(year)))+
+  geom_line() +
+  geom_line(data = races_ham%>%filter(constructorRef == "mercedes" & year < 2021), color = "red")+
+  geom_line(data = races_ham%>%filter(constructorRef == "mercedes" & year >= 2021), color = "blue")+
+  labs(title = "Hamilton's Race Points", x = "Round", y = "Points")+
+  theme_minimal()
+```
+
+This first graph is quite simple. Each line represents a year that Lewis Hamilton has been racing in Formula 1 and the total points he obtained in each of those years. He has been extremely dominant in the past decade, and many people wonder if it's due to Lewis's skill or if Mercedes just had a really good car. This graphic is color-coded: the black lines represent years in which he raced but not with Mercedes, the red lines represent the years he raced with Mercedes, and the blue lines represent the years he raced with Mercedes after the cost cap was implemented. We can clearly see that Lewis has been struggling since the cost cap was put in place. I intend to create a shiny app that allows me to choose which driver I would like to analyze, as well as specify a year or team. The app will then filter the data to display a line graph with the specified year or team highlighted.
+
+# Graph 2:
+
+```{r echo=FALSE, message=FALSE}
+result <- constructor_data %>%
+  filter(year > 2020)%>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))
+
+ggplot(result, aes(team, max_value)) +
+  geom_bar(stat = "identity") +
+  labs(title = "2021-2023 Constructors Championships", x = "Team", y = "Points") +
+  coord_flip() +
+  facet_wrap(~year, ncol = 1)
+
+```
+
+This plot offers valuable insights into the performance of different teams over the past 3 years. It shows the total number of constructor points earned by each team (I will of course explain what all of these F1 terms are in the final project to make it more clear). The x-axis represents the total points earned, the y-axis represents the teams, and the plot is faceted by year, allowing for a more comprehensive analysis of the data. I plan to create another shiny app for this graph which will allow users to color code the data based on different variables, such as different teams and different years. This will make it easier for users to identify and analyze trends for multiple teams, enabling a more detailed analysis. 
+
+# Graph 3:
+
+```{r echo=FALSE, message=FALSE}
+constructor_21_22 = constructor_data%>%
+  filter(year %in% c(2021,2022))
+
+result_21_22 <- constructor_21_22 %>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))
+
+result_2021 = result_21_22%>%
+  filter(year == 2021)
+
+result_2022 = result_21_22%>%
+  filter(year == 2022)
+
+slopegraph <- ggplot(data = result_21_22, aes(x = year, y = max_value, group = team, color = team)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  geom_text(aes(label = max_value, vjust = -0.5), size = 4) +
+  scale_x_continuous(breaks = c(2021, 2022), labels = c("2021", "2022")) +
+  labs(
+    x = "Year",
+    y = "Max Value",
+    title = "Slopegraph of Max Values for Each Team (2021-2022)"
+  ) +
+  theme_minimal()
+
+# Display the slopegraph
+print(slopegraph)
+
+#----------------------------------------------------------------------------------
+
+# team_colors <- c("Red Bull" = "red", "Other Teams" = "gray")
+# 
+# # Create a slopegraph using ggplot2 with customized colors
+# slopegraph <- ggplot(data = result_21_22, aes(x = year, y = max_value, group = team, color = team)) +
+#   geom_line(aes(x = year), size = 1) +
+#   geom_point(aes(x = year), size = 3) +
+#   geom_text(aes(label = max_value, vjust = -0.5), position = position_dodge(0.2), size = 4) +
+#   scale_x_continuous(breaks = c(2021, 2022), labels = c("2021", "2022")) +
+#   scale_color_manual(values = team_colors) +  # Set custom colors
+#   labs(
+#     x = "Year",
+#     y = "Max Value",
+#     title = "Slopegraph of Max Values for Each Team (2021-2022)"
+#   ) +
+#   theme_minimal()
+# 
+# # Display the slopegraph
+# print(slopegraph)
+
+
+```
+
+This slopegraph is an alternative and effective way to visualize the total constructor points from year to year. The x-axis represents the year, the y-axis represents the total number of points each team got. This graph allows us to easily compare the performance of different teams over time. This visual will allow us to see how different regulations have influenced teams either positively or negatively. I will again attempt to create an interactive shiny app where users can choose and compare any two years or even a range of years. They will also be able to filter the data based on a specific team or driver to highlight their performance. 
+
+# Graph 4:
+
+```{r echo=FALSE}
+# result_data$year <- as.numeric(result_data$year)
+
+race_2004 = result_data%>%
+  filter(year > 2004)
+
+# Create a boxplot for each year
+ggplot(race_2004, aes(x = factor(year), y = race_fastestLapSpeed)) +
+  geom_boxplot() +
+  labs(title = "Fastest Race Speed by Year", x = "Year", y = "Fastest Spped (km/h)") +
+  theme_minimal()
+
+```
+
+This graph shows a set of box plots. The x-axis represents the year and the y-axis represents the Fastest Speed in kilometers per hour. This visualization allows us to easily see and analyze the improvements in speed over the years for these cars. From 2005 to around 2015, the speeds showed a gradual decline. However, after that period, there was a noticeable shift as the speeds started to increase again. To make this graph interactive, I plan to make another shiny app. This app will allow users to choose a specific circuit. Once a circuit is selected, the app will filter the data to show how the speeds have changed over the years on that particular circuit. This feature will let users focus on the data that is most relevant to their interests or research. 
+
+# Graph 5:
+
+```{r echo=FALSE, message=FALSE}
+library(rnaturalearth)
+library(sf)
+
+# Fetch a world map image using rnaturalearth
+world_map <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Create the ggplot with a world map background
+ggplot() +
+  geom_sf(data = world_map) +  # Add the world map as a background
+  geom_point(data = circuit_races, aes(x = lng, y = lat), size = 1.5, color = "red") +
+  labs(title = "Every Grand Prix Location", x = "Longitude", y = "Latitude")
+
+# Save the plot as a PDF
+#ggsave("world_map_with_points.pdf", plot = p, width = 8, height = 6, units = "in")
+
+```
+
+This graph is a map of the world showing the exact location of every Formula 1 Grand Prix. By using both longitude on the x-axis and latitude for the y-axis, the map accurately displays the race locations on top of a world. I find it quite interesting how global Formula 1 racing is as well as how a majority of F1 races take place in Europe. To improve this visualization, I intend to include the altitude of each race location. This would be very useful as it would allow the user to cross reference the altitude with the car's performance. I am also considering creating a world heatmap. This heatmap would allow users to more easily identify the countries that have hosted Grand Prix races and, more importantly, determine which ones have hosted the most races.

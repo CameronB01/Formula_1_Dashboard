@@ -1,0 +1,1506 @@
+---
+title: "F1_Rough_Draft"
+author: "Cameron Bayer"
+date: "2023-10-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load packages
+library(tidyverse)
+library(sf)
+library(mapview)
+library(shiny)
+library(leaflet)
+```
+
+
+```{r}
+# Load in datasets
+circuits = read_csv("f1db_csv/circuits.csv")
+constructor_results = read_csv("f1db_csv/constructor_results.csv")
+constructor_standings = read_csv("f1db_csv/constructor_standings.csv")
+constructors = read_csv("f1db_csv/constructors.csv")
+driver_standings = read_csv("f1db_csv/driver_standings.csv")
+drivers = read_csv("f1db_csv/drivers.csv")
+lap_times = read_csv("f1db_csv/lap_times.csv")
+pit_stops = read_csv("f1db_csv/pit_stops.csv")
+qualifying = read_csv("f1db_csv/qualifying.csv")
+races = read_csv("f1db_csv/races.csv")
+results = read_csv("f1db_csv/results.csv")
+sprint_results = read_csv("f1db_csv/sprint_results.csv")
+status = read_csv("f1db_csv/status.csv")
+```
+
+
+```{r}
+# Clean up data column names and change variable types
+
+# circuits 
+names(circuits)[3] = "Circuit"
+circuits = circuits%>%
+  select(-url)%>%
+  mutate(alt = as.integer(alt), 
+         circuitRef = factor(circuitRef),
+         location = factor(location),
+         country = factor(country))
+
+
+# constructor_results 
+names(constructor_results)[4] = "constructor_points"
+constructor_results = constructor_results%>%
+  select(-status)
+
+
+# constructor_standings 
+names(constructor_standings)[4] = "constructor_total_points"
+names(constructor_standings)[5] = "constructor_position"
+names(constructor_standings)[7] = "race_win"
+constructor_standings = constructor_standings%>%
+  select(-positionText)
+
+
+# constructors 
+names(constructors)[3] = "team"
+constructors = constructors%>%
+  select(-url)%>%
+  mutate(constructorRef = factor(constructorRef),
+         team = factor(team),
+         nationality = factor(nationality))
+
+
+# driver_standings 
+names(driver_standings)[4] = "driver_points"
+names(driver_standings)[5] = "driver_position"
+names(driver_standings)[7] = "driver_win"
+driver_standings = driver_standings%>%
+  select(-positionText)
+
+
+# drivers 
+names(drivers)[3] = "driver_number"
+names(drivers)[4] = "driver_code"
+names(drivers)[8] = "driver_nationality"
+drivers = drivers%>%
+  select(-url)%>%
+  mutate(driverRef = factor(driverRef),
+         driver_nationality = factor(driver_nationality))
+
+
+# lap_times 
+names(lap_times)[4] = "lap_times_position"
+names(lap_times)[5] = "lap_time"
+names(lap_times)[6] = "lap_time_milliseconds"
+
+
+# pit_stops 
+names(pit_stops)[3] = "stops"
+names(pit_stops)[5] = "pit_stop_time"
+names(pit_stops)[6] = "pit_stop_duration"
+names(pit_stops)[7] = "pit_stop_duration_milliseconds"
+pit_stops = pit_stops%>% 
+  mutate(pit_stop_duration = as.numeric(pit_stop_duration)) 
+
+
+# qualifying 
+names(qualifying)[5] = "driver_number"
+names(qualifying)[6] = "qualifying_position"
+
+
+# races 
+names(races)[5] = "grand_prix"
+names(races)[6] = "race_date"
+names(races)[7] = "race_time"
+races = races%>%
+  select(raceId:race_time)
+
+
+# results 
+names(results)[5] = "driver_number"
+names(results)[6] = "starting_grid_position"
+names(results)[7] = "race_position"
+names(results)[8] = "race_positionText"
+names(results)[9] = "race_positionOrder"
+names(results)[10] = "race_points"
+names(results)[11] = "race_laps"
+names(results)[12] = "race_time"
+names(results)[13] = "race_time_milliseconds"
+names(results)[14] = "race_fastestLap"
+names(results)[15] = "race_rank"
+names(results)[16] = "race_fastestLapTime"
+names(results)[17] = "race_fastestLapSpeed"
+drivers = drivers%>%
+  select(-driver_number)
+# results = results%>%
+#   mutate(milliseconds = as.numeric(milliseconds),
+#          fastestLap = as.numeric(fastestLap),
+#          rank = as.numeric(rank),
+#          fastestLapSpeed = as.numeric(fastestLapSpeed))
+
+
+# sprint_results 
+names(sprint_results)[5] = "driver_number"
+names(sprint_results)[6] = "sprint_grid"
+names(sprint_results)[7] = "sprint_position"
+names(sprint_results)[8] = "sprint_positionText"
+names(sprint_results)[9] = "sprint_positionOrder"
+names(sprint_results)[10] = "sprint_points"
+names(sprint_results)[11] = "sprint_laps"
+names(sprint_results)[12] = "sprint_time"
+names(sprint_results)[13] = "sprint_time_milliseconds"
+names(sprint_results)[14] = "sprint_fastestLap"
+names(sprint_results)[15] = "sprint_fastestLapTime"
+# sprint_results = sprint_results%>%
+#   mutate(milliseconds = as.numeric(milliseconds),
+#          fastestLap = as.numeric(fastestLap))
+```
+
+
+```{r}
+# Merge the necessary datasets
+
+years = races%>%
+  select(raceId, year)
+
+
+constructor_data = constructors%>%
+  left_join(constructor_standings, by = "constructorId")%>%
+  left_join(constructor_results, by = c("constructorId", "raceId"))%>%
+  left_join(years, by = "raceId")
+
+
+circuit_races =  circuits%>%
+  full_join(races, by = "circuitId")
+
+
+race_data = lap_times%>%
+  full_join(pit_stops, by = c("raceId", "driverId", "lap"))%>%
+  full_join(drivers, by = "driverId")
+
+
+standings_driver = driver_standings%>%
+  full_join(drivers, by = "driverId")%>%
+  full_join(races, by = "raceId")
+
+
+qualifying_data = qualifying%>%
+  full_join(drivers, by = "driverId")%>%
+  full_join(constructors, by = "constructorId")
+
+
+sprint_data = sprint_results%>%
+  full_join(drivers, by = "driverId")
+
+
+result_data = results%>%
+  full_join(drivers, by = "driverId")%>%
+  mutate(race_fastestLapSpeed = as.numeric(race_fastestLapSpeed))%>%
+  full_join(years, by = "raceId")
+```
+
+```{r}
+races_year = standings_driver%>%
+  filter(year == 2023)
+
+ggplot(races_year, aes(round, driver_points, color = driverRef))+
+  geom_line()+
+  labs(title = "Race Points 2023", x = "Round", y = "Points")
+```
+
+
+```{r}
+races_ver = standings_driver%>%
+  filter(driverRef == "max_verstappen")
+
+ggplot(races_ver, aes(round, driver_points, color = factor(year)))+
+  geom_line()+
+  labs(title = "Max Verstappen's Race Points", x = "Round", y = "Points")
+```
+
+
+```{r}
+library(tidytext)
+
+result <- constructor_data %>%
+  filter(year >= 2021)%>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))%>%
+  mutate(year = factor(year))
+
+ggplot(result, aes(x = reorder_within(team, max_value, year), y = max_value, fill = team)) +
+  geom_bar(stat = "identity") +
+  labs(title = "2022 Constructors Championship", x = "Team", y = "Points") +
+  coord_flip() +
+  scale_x_reordered() +
+  facet_wrap(~year, ncol = 1, scales = "free_y")
+
+```
+
+```{r}
+all_races = circuits%>%
+  select(-circuitId, -circuitRef)%>%
+  rename("Location" = "location",
+         "Country" = "country",
+         "Latitude" = "lat",
+         "Longitude" = "lng",
+         "Altitude" = "alt")
+
+mapview(all_races, xcol = "Longitude", ycol = "Latitude", zcol = "Altitude", crs = 4269, grid = FALSE)
+```
+
+
+```{r}
+total_active_races = races%>%
+  left_join(circuits, by = "circuitId")%>%
+  select(year, grand_prix, Circuit, location, country, lat, lng, alt)%>%
+  rename("Year" = "year",
+         "Grand Prix" = "grand_prix",
+         "Location" = "location",
+         "Country" = "country",
+         "Latitude" = "lat",
+         "Longitude" = "lng",
+         "Altitude (m)" = "alt")
+
+active_races = total_active_races%>%
+  filter(Year == 1950)
+
+mapview(active_races, xcol = "Longitude", ycol = "Latitude", zcol = "Altitude (m)", crs = 4269, grid = FALSE)
+```
+
+
+
+```{r}
+ui <- fluidPage(
+  titlePanel("Line Plot Shiny App"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput("name", "Enter a name:", ""),
+      selectInput("year", "Select a year:", choices = sort(unique(standings_driver$year), decreasing = TRUE))
+    ),
+    mainPanel(
+      plotOutput("line_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  filtered_data <- reactive({
+    subset(standings_driver, driverRef == input$name)
+  })
+  
+  output$line_plot <- renderPlot({
+    ggplot(filtered_data(), aes(x = round, y = driver_points, group = year, color = factor(year))) +
+      geom_line(aes(color = "grey"), size = 1) +
+      geom_line(data = filtered_data()%>%filter(year == input$year), aes(color = "red"), size = 1) +
+      labs(title = "Points Over Rounds",
+           x = "Round",
+           y = "Points",
+           color = "Year")+
+      scale_color_manual(values = c("grey" = "grey", "red" = "red"))
+      # theme_minimal()
+  })
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel("Line Plot Shiny App"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("start_year", "Select a starting year:", choices = sort(unique(constructor_data$year))),
+      selectInput("end_year", "Select an end year:", choices = sort(unique(constructor_data$year))),
+      selectInput("team", "Select a team:", choices = sort(unique(constructor_data$team)))
+    ),
+    mainPanel(
+      plotOutput("line_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  filtered_data <- reactive({
+  start_year <- as.integer(input$start_year)
+  end_year <- as.integer(input$end_year)
+
+  subset(constructor_data, year %in% c(start_year, end_year)) %>%
+    group_by(team, year) %>%
+    summarize(max_value = max(constructor_total_points))
+  })
+
+  
+  output$line_plot <- renderPlot({
+    selected_team = input$team
+    
+    ggplot(filtered_data(), aes(x = year, y = max_value, group = team, color = team)) +
+      geom_line(size = 1) +
+      geom_point(size = 3) +
+      geom_line(data = filtered_data()%>%filter(team == input$team), color = "red", size = 1) +
+      geom_point(data = filtered_data()%>%filter(team == input$team), color = "red", size = 3) +
+      scale_color_manual(values = c(selected_team = "red", "Other Teams" = "gray")) +
+      #scale_color_viridis_d()+
+      labs(
+        x = "Year",
+        y = "Max Value",
+        title = "Slopegraph of Max Values for Each Team (2021-2022)"
+      ) 
+  })
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+race_2004 = result_data%>%
+  filter(year > 2004)
+
+# Create a boxplot for each year
+ggplot(race_2004, aes(x = factor(year), y = race_fastestLapSpeed)) +
+  geom_boxplot() +
+  labs(title = "Fastest Race Speed by Year", x = "Year", y = "Fastest Spped (km/h)") +
+  theme_minimal()
+```
+
+```{r}
+result <- standings_driver%>%
+  group_by(driverId, year) %>%
+  summarize(max_value = max(driver_win))%>%
+  mutate(year = factor(year))
+
+result = result%>%
+  left_join(drivers, by = "driverId")
+
+result <- result %>%
+  group_by(driverId) %>%
+  summarise(total_wins = sum(max_value))
+
+result = result%>%
+  left_join(drivers, by = "driverId")%>%
+  arrange(desc(total_wins))
+
+ggplot(result[1:10,], aes(fct_reorder(driverRef, total_wins), total_wins))+
+  geom_bar(stat = "identity")+
+  coord_flip()
+```
+
+```{r}
+driver_win_loc <- standings_driver%>%
+  filter(driver_win != 0 & driverRef == "max_verstappen")%>%
+  left_join(circuits, by = "circuitId")
+
+driver_win_loc = driver_win_loc %>%
+  arrange(raceId)%>%
+  group_by(year)%>%
+  distinct(driver_win, .keep_all = TRUE)%>%
+  ungroup(year)
+
+gp_count = driver_win_loc%>%
+  count(country)
+
+ggplot(gp_count, aes(fct_reorder(country, n), n))+
+  geom_bar(stat = "identity")+
+  coord_flip()
+```
+
+```{r}
+nationality_count = drivers%>%
+  count(driver_nationality)
+
+ggplot(nationality_count, aes(reorder(driver_nationality, +n), n))+
+  geom_bar(stat = "identity")+
+  coord_flip()
+```
+
+```{r}
+race_data_PIA = race_data%>%
+  filter(raceId == 1115 & driverRef == "piastri")
+race_data_NOR = race_data%>%
+  filter(raceId == 1115 & driverRef == "norris")
+
+ggplot(race_data_PIA, aes(lap, lap_times_position))+
+  geom_point()+
+  geom_line()+
+  geom_point(data = race_data_NOR, color = "red")+
+  geom_line(data = race_data_NOR, color = "red")+
+  scale_y_reverse()
+```
+
+```{r}
+ui <- fluidPage(
+  
+  titlePanel("Line Plot Shiny App"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      textInput("name", "Enter a name:", ""),
+      selectInput("year", "Select a year:", choices = sort(unique(standings_driver$year), decreasing = TRUE)),
+      selectInput("start_year", "Select a starting year:", choices = sort(unique(constructor_data$year), decreasing = TRUE)),
+      selectInput("end_year", "Select an end year:", choices = sort(unique(constructor_data$year), decreasing = TRUE)),
+      selectInput("team", "Select a team:", choices = sort(unique(constructor_data$team)))
+    ),
+    
+    mainPanel(
+      plotOutput("line_plot"),
+      plotOutput("slope_plot"),
+      leafletOutput("world_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  filtered_data_line_plot <- reactive({
+    subset(standings_driver, driverRef == input$name)
+  })
+  
+  output$line_plot <- renderPlot({
+    ggplot(filtered_data_line_plot(), aes(x = round, y = driver_points, group = year, color = factor(year))) +
+      geom_line(aes(color = "grey"), size = 1) +
+      geom_line(data = filtered_data_line_plot()%>%filter(year == input$year), aes(color = "red"), size = 1) +
+      labs(title = "Points Over Rounds",
+           x = "Round",
+           y = "Points",
+           color = "Year")+
+      scale_color_manual(values = c("grey" = "grey", "red" = "red"))
+      # theme_minimal()
+  })
+  
+  
+  filtered_data_slope_plot <- reactive({
+    start_year <- as.integer(input$start_year)
+    end_year <- as.integer(input$end_year)
+    
+    subset(constructor_data, year %in% c(start_year, end_year)) %>%
+      group_by(team, year) %>%
+      summarize(max_value = max(constructor_total_points))
+  })
+  
+  output$slope_plot <- renderPlot({
+    selected_team = input$team
+    
+    ggplot(filtered_data_slope_plot(), aes(x = year, y = max_value, group = team, color = team)) +
+      geom_line(size = 1) +
+      geom_point(size = 3) +
+      geom_line(data = filtered_data_slope_plot()%>%filter(team == input$team), color = "red", size = 1) +
+      geom_point(data = filtered_data_slope_plot()%>%filter(team == input$team), color = "red", size = 3) +
+      scale_color_manual(values = c(selected_team = "red", "Other Teams" = "gray")) +
+      #scale_color_viridis_d()+
+      labs(
+        x = "Year",
+        y = "Max Value",
+        title = "Slopegraph of Max Values for Each Team (2021-2022)"
+      ) 
+  })
+  
+  
+  output$world_plot <- renderLeaflet({
+    mapview(all_races, xcol = "Longitude", ycol = "Latitude", zcol = "Altitude", crs = 4269, grid = FALSE)@map
+  })
+
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+
+
+
+
+
+```{r}
+library(shiny)
+library(shinydashboard)
+library(ggplot2)
+library(dplyr)
+library(leaflet)
+library(mapview)
+
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Line Plot Shiny App"),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Line Plot", tabName = "line_plot", icon = icon("line-chart")),
+      menuItem("Slope Plot", tabName = "slope_plot", icon = icon("area-chart")),
+      menuItem("World Plot", tabName = "world_plot", icon = icon("globe"))
+    ),
+    textInput("name", "Enter a name:", ""),
+    selectInput("year", "Select a year:", choices = sort(unique(standings_driver$year), decreasing = TRUE)),
+    selectInput("start_year", "Select a starting year:", choices = sort(unique(constructor_data$year), decreasing = TRUE)),
+    selectInput("end_year", "Select an end year:", choices = sort(unique(constructor_data$year), decreasing = TRUE)),
+    selectInput("team", "Select a team:", choices = sort(unique(constructor_data$team))
+    )
+  ),
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "line_plot",
+              plotOutput("line_plot")),
+      tabItem(tabName = "slope_plot",
+              plotOutput("slope_plot")),
+      tabItem(tabName = "world_plot",
+              leafletOutput("world_plot"))
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  filtered_data_line_plot <- reactive({
+    subset(standings_driver, driverRef == input$name)
+  })
+  
+  output$line_plot <- renderPlot({
+    ggplot(filtered_data_line_plot(), aes(x = round, y = driver_points, group = year, color = factor(year))) +
+      geom_line(aes(color = "grey"), size = 1) +
+      geom_line(data = filtered_data_line_plot() %>% filter(year == input$year), aes(color = "red"), size = 1) +
+      labs(title = "Points Over Rounds",
+           x = "Round",
+           y = "Points",
+           color = "Year") +
+      scale_color_manual(values = c("grey" = "grey", "red" = "red"))
+  })
+  
+  filtered_data_slope_plot <- reactive({
+    start_year <- as.integer(input$start_year)
+    end_year <- as.integer(input$end_year)
+    
+    subset(constructor_data, year %in% c(start_year, end_year)) %>%
+      group_by(team, year) %>%
+      summarize(max_value = max(constructor_total_points))
+  })
+  
+  output$slope_plot <- renderPlot({
+    selected_team = input$team
+    
+    ggplot(filtered_data_slope_plot(), aes(x = year, y = max_value, group = team, color = team)) +
+      geom_line(size = 1) +
+      geom_point(size = 3) +
+      geom_line(data = filtered_data_slope_plot() %>% filter(team == input$team), color = "red", size = 1) +
+      geom_point(data = filtered_data_slope_plot() %>% filter(team == input$team), color = "red", size = 3) +
+      scale_color_manual(values = c(selected_team = "red", "Other Teams" = "gray")) +
+      labs(
+        x = "Year",
+        y = "Max Value",
+        title = "Slopegraph of Max Values for Each Team (2021-2022)"
+      )
+  })
+  
+  output$world_plot <- renderLeaflet({
+    mapview(all_races, xcol = "Longitude", ycol = "Latitude", zcol = "Altitude", crs = 4269, grid = FALSE)@map
+  })
+}
+
+shinyApp(ui, server)
+
+```
+
+
+
+
+
+
+
+```{r}
+library(tidytext)
+
+constructor_leaderboard <- constructor_data %>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))
+
+constructor_leaderboard = na.omit(constructor_leaderboard)%>%
+  arrange(desc(year), desc(max_value))%>%
+  group_by(year)%>%
+  mutate(rank = row_number())
+
+test = constructor_leaderboard%>%
+  filter(year >= 2020)
+
+ggplot(test, aes(x = year, y = rank, color = team)) +
+  geom_point() +
+  scale_y_reverse()+
+  labs(title = "Constructor Leaderboard", x = "Year", y = "Rank")
+```
+
+```{r}
+test = standings_driver%>%
+  filter(driverRef == "max_verstappen")
+
+counter = test%>%
+  count(driver_position)
+
+ggplot(counter, aes(driver_position, n))+
+  geom_bar(stat = "identity", fill = "#CBCBCC")+
+  coord_flip()+
+  labs(x = "Position", y = "Count")+
+  scale_x_reverse(breaks = seq(1, max(test$driver_position), by = 1))+
+  theme_minimal()+
+  theme(panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill = "#272c30"),
+        axis.text = element_text(color = "white"),
+        axis.text.y = element_text(hjust = 0.9),
+        panel.grid.major = element_line(color = "#7b7f82"),
+        panel.grid.major.y = element_blank(),
+        axis.title = element_text(color = "white"))
+
+```
+
+
+
+```{r}
+test = filtered_results%>%
+  filter(driverRef == "hamilton")%>%
+  group_by(driverRef, team)
+test = unique(test)
+test = count(test)
+  # summarize(unique_combinations = n_distinct(constructorRef, team))
+
+test <- filtered_results %>% 
+  filter(driverRef == "hamilton") %>% 
+  group_by(driverRef, team) %>% 
+  unique()%>%
+  count()
+
+
+  summarise(count = n()) %>% 
+  ungroup()
+
+
+
+
+ggplot(test, aes(x = team, y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  labs(title = "Number of Unique Combinations for Each Driver",
+       x = "Driver Reference",
+       y = "Number of Unique Combinations") +
+  theme_minimal()+
+  coord_flip()
+
+```
+
+
+```{r}
+if (interactive()) {
+ library(shiny)
+ library(shinyWidgets)
+ library(shinydashboard)
+ library(shinydashboardPlus)
+ 
+ shinyApp(
+  ui = dashboardPage(
+    header = dashboardHeader(
+      leftUi = tagList(
+        dropdownBlock(
+          id = "mydropdown",
+          title = "Dropdown 1",
+          icon = icon("sliders"),
+          sliderInput(
+            inputId = "n",
+            label = "Number of observations",
+            min = 10, max = 100, value = 30
+          ),
+          prettyToggle(
+            inputId = "na",
+            label_on = "NAs kept",
+            label_off = "NAs removed",
+            icon_on = icon("check"),
+            icon_off = icon("trash-can")
+          )
+        ),
+        dropdownBlock(
+          id = "mydropdown2",
+          title = "Dropdown 2",
+          icon = icon("sliders"),
+          prettySwitch(
+            inputId = "switch4",
+            label = "Fill switch with status:",
+            fill = TRUE, 
+            status = "primary"
+          ),
+          prettyCheckboxGroup(
+            inputId = "checkgroup2",
+            label = "Click me!", 
+            thick = TRUE,
+            choices = c("Click me !", "Me !", "Or me !"),
+            animation = "pulse", 
+            status = "info"
+          )
+        )
+      ),
+      dropdownMenu(
+        type = "tasks", 
+        badgeStatus = "danger",
+        taskItem(value = 20, color = "aqua", "Refactor code"),
+        taskItem(value = 40, color = "green", "Design new layout"),
+        taskItem(value = 60, color = "yellow", "Another task"),
+        taskItem(value = 80, color = "red", "Write documentation")
+      )
+    ),
+    sidebar = dashboardSidebar(),
+    body = dashboardBody(
+      setShadow(class = "dropdown-menu")
+    ),
+    title = "DashboardPage"
+  ),
+  server = function(input, output) { }
+ )
+}
+
+
+
+```
+
+```{r}
+test = race_data%>%
+  filter(year == 2023, Circuit == "Bahrain International Circuit")
+
+ggplot(test, aes(lap, lap_times_position, color = driverRef))+
+  geom_line()+
+  scale_y_reverse()
+```
+
+```{r}
+test = pit_stops%>%
+  left_join(years, by = "raceId")
+
+ggplot(test, aes(x = factor(year), y = pit_stop_duration)) +
+  geom_boxplot() +
+  theme_minimal()
+```
+
+```{r}
+library(shiny)
+library(shinydashboard)
+
+ui <- dashboardPage(
+  dashboardHeader(title = "My Dashboard"),
+  dashboardSidebar(),
+  dashboardBody(
+    box(title = "Table", width = 12, tableOutput("table"))
+  )
+)
+
+server <- function(input, output) {
+  output$table <- renderTable({
+    iris %>%
+      select(Sepal.Length, Sepal.Width, Petal.Length, Petal.Width)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+
+
+```
+
+```{r}
+library(shiny)
+library(shinydashboard)
+library(DT)
+
+ui <- dashboardPage(
+  dashboardHeader(title = "My Dashboard"),
+  dashboardSidebar(),
+  dashboardBody(
+    box(title = "Table", width = 12, DT::dataTableOutput("table"))
+  )
+)
+
+server <- function(input, output) {
+  output$table <- DT::renderDataTable({
+    iris %>%
+      select(Sepal.Length, Sepal.Width, Petal.Length, Petal.Width) %>%
+      DT::datatable()
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+                # box(width = 6, 
+                #     selectInput("constructor_table_year", "Select a year:", choices = sort(unique(constructor_data$year), decreasing = TRUE)),
+                #     plotOutput("constructor_table")),
+
+
+  # output$constructor_table <- renderDataTable({
+  #   constructor_table_leaderboard <- constructor_data %>%
+  #     filter(year == input$constructor_table_year)%>%
+  #     group_by(constructorRef, year) %>%
+  #     summarize(max_value = max(constructor_total_points))
+  #   
+  #   constructor_table_leaderboard = na.omit(constructor_table_leaderboard)%>%
+  #     arrange(desc(year), desc(max_value))%>%
+  #     group_by(year)%>%
+  #     mutate(rank = dense_rank(desc(max_value)))%>%
+  #     rename(Year = year, 
+  #            Rank = rank)
+  #   
+  #   
+  #   results_constructor_filter_table = result_data%>%
+  #     filter(year == input$constructor_table_year)%>%
+  #     left_join(constructors, by = "constructorId")%>%
+  #     mutate(race_position = as.numeric(race_position))%>%
+  #     group_by(constructorRef)%>%
+  #     mutate(win = ifelse(race_position == 1, TRUE, FALSE)) %>%
+  #     mutate(podium = ifelse(race_position <= 3, TRUE, FALSE)) %>%
+  #     mutate(score = ifelse(race_position <= 10, TRUE, FALSE)) %>%
+  #     summarize(Wins = sum(win, na.rm = TRUE),
+  #               Podiums = sum(podium, na.rm = TRUE),
+  #               Scores = sum(score, na.rm = TRUE))
+  #     
+  #   
+  #   table_constructor_result_standings = constructor_table_leaderboard%>%
+  #     left_join(results_constructor_filter_table, by = "constructorRef")%>%
+  #     arrange(desc(max_value))%>%
+  #     rename(Points = max_value, Team = constructorRef)%>%
+  #     select(-Rank, -Year)
+  #   
+  #   
+  #   datatable(table_constructor_result_standings, options = list(pageLength = length(table_constructor_result_standings$Team)))
+  #   })
+```
+
+
+
+```{r}
+test = race_data%>%
+  filter(year == 2022, Circuit == "Bahrain International Circuit")%>%
+  rename(Driver = driverRef, Lap = lap, Position = lap_times_position)
+
+plot = ggplot(test, aes(Lap, Position, color = Driver))+
+  geom_line()+
+  scale_y_reverse()+
+  labs(x = "Lap", y = "Position")+
+  theme_minimal()+
+  theme(panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill = background_color, color = background_color),
+        axis.text = element_text(color = axis_color),
+        axis.text.y = element_text(hjust = 0.9),
+        panel.grid.major = element_line(color = grid_major_color),
+        panel.grid.major.y = element_blank(),
+        axis.title = element_text(color = title_color),
+        legend.position = "none")
+ggplotly(plot)%>%
+  layout(plot_bgcolor = "#272c30")
+```
+
+
+
+
+
+```{r}
+safety_cars = read_csv("accidents/safety_cars.csv")
+safety_cars = separate(safety_cars, Race, into = c("Year", "Race"), sep = " ", extra = "merge")
+test = safety_cars%>%
+  count(Cause)
+
+fatal_accidents = read_csv("accidents/fatal_accidents_drivers.csv")
+fatal_accidents%>%
+  count(Session)
+
+```
+
+
+
+```{r}
+status_results = result_data%>%
+  select(raceId, constructorId, statusId, driverRef, year)
+
+status_results = status_results%>%
+  left_join(status, by = "statusId")%>%
+  left_join(constructors, by = "constructorId")
+
+test = status_results%>%
+  filter(driverRef == "hamilton")%>%
+  count(status)%>%
+  arrange(desc(n))
+
+test = test[!grepl("Finished", test$status),]
+
+ggplot(test, aes(reorder(status, n), n))+
+  geom_bar(stat = "identity")+
+  coord_flip()+
+  scale_y_continuous(breaks = seq(0, max(test$n), by = 1))
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+      status_constructor_results = result_data%>%
+        select(raceId, constructorId, statusId, driverRef, year)
+      
+      status_constructor_results = status_constructor_results%>%
+        left_join(status, by = "statusId")%>%
+        left_join(constructors, by = "constructorId")%>%
+        filter(constructorRef == "mclaren", year == 2022)%>%
+        count(status)%>%
+        arrange(desc(n))
+      
+      status_constructor_results = status_constructor_results[!grepl("Finished", status_constructor_results$status),]
+      
+      ggplot(status_constructor_results, aes(reorder(status, n), n))+
+        geom_bar(stat = "identity")+
+        coord_flip()+
+        scale_y_continuous(breaks = seq(0, max(status_constructor_results$n), by = 1))+
+        labs(x = "Reason", y = "Count")
+        # theme_minimal()+
+        # theme(panel.grid.minor = element_blank(),
+        #       plot.background = element_rect(fill = background_color, color = background_color),
+        #       axis.text = element_text(color = axis_color, size = axis_size),
+        #       axis.text.y = element_text(hjust = 0.9),
+        #       panel.grid.major = element_line(color = grid_major_color),
+        #       panel.grid.major.y = element_blank(),
+        #       axis.title = element_text(color = title_color, size = axis_title_size),
+        #       legend.position = "none")
+```
+
+
+
+
+
+
+
+```{r warning=FALSE}
+test2 = standings_driver%>%
+  filter(year == 2022)%>%
+  group_by(driverRef)%>%
+  summarize(max_value = max(driver_points, na.rm = TRUE))%>%
+  arrange(desc(max_value))
+
+test = race_data%>%
+  select(lap_times_position, driverRef, year)%>%
+  filter(year == 2022)%>%
+  group_by(driverRef, lap_times_position)%>%
+  count(lap_times_position)
+
+
+
+wide_df <- pivot_wider(data = test, 
+                       names_from = driverRef, 
+                       values_from = n)%>%
+  arrange(lap_times_position)
+
+wide_df[is.na(wide_df)] = 0
+
+long_df <- wide_df %>%
+  pivot_longer(cols = -lap_times_position, names_to = "driverRef", values_to = "n") %>%
+  arrange(lap_times_position)
+
+
+long_df$driverRef <- factor(long_df$driverRef, levels = rev(test2$driverRef))
+
+
+ggplot(long_df, aes(lap_times_position, driverRef, fill = n, label = n)) +
+  geom_tile() +
+  geom_text(color = "black", size = 3) + 
+  scale_fill_gradient(trans = "log", low = "white", high = "blue", na.value = "white") +
+  labs(x = "Postion", y = "Driver")+
+  theme_minimal()+
+  theme(legend.position = "none",
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+
+
+```
+
+
+```{r}
+test = lap_times%>%
+  left_join(drivers, by = "driverId")%>%
+  left_join(years, by = "raceId")%>%
+  mutate(seconds = lap_time_milliseconds / 1000)%>%
+  filter(raceId == 1076, driverRef == "max_verstappen")
+   
+
+test2 = pit_stops%>%
+  select(raceId, driverId, stops, lap)
+
+
+test3 = test%>%
+  left_join(test2, by = c("raceId", "driverId", "lap"))
+
+
+test3$stops[is.na(test3$stops)] <- 0
+
+delta_times <- test3 %>%
+  group_by(driverRef) %>%
+  mutate(delta_seconds = c(NA, diff(seconds))) %>%
+  ungroup()
+
+
+quartiles <- quantile(delta_times$delta_seconds, probs = c(0.25, 0.5, 0.75), na.rm = TRUE)
+
+below_zero <- sum(delta_times$delta_seconds < 0, na.rm = TRUE)
+above_zero <- sum(delta_times$delta_seconds >= 0, na.rm = TRUE)
+
+# Display the counts
+print(paste("Times below 0:", below_zero))
+print(paste("Times above 0:", above_zero))
+
+
+
+
+
+
+
+
+
+
+
+column_to_check <- delta_times$stops
+rows_to_remove <- numeric(0)
+
+for (i in 1:(length(column_to_check) - 1)) {
+  if (column_to_check[i] != 0) {
+    # Add the indices of the rows to be removed to 'rows_to_remove'
+    rows_to_remove <- c(rows_to_remove, i+1, i+2)
+  }
+}
+
+# Remove the identified rows
+delta_times <- delta_times[-rows_to_remove, ]
+
+
+
+
+
+
+
+
+circuit_names = races%>%
+  select(raceId, year, grand_prix)
+
+
+safety_cars_clean = separate(safety_cars, Race, into = c("year", "grand_prix"), sep = " ", extra = "merge")%>%
+  mutate(year = as.numeric(year))%>%
+  left_join(circuit_names, by = c("year", "grand_prix"))%>%
+  filter(raceId == 1076)%>%
+  select(Deployed, FullLaps)
+  
+
+  
+
+merged_data <- delta_times %>%
+  left_join(safety_cars_clean, by = c("lap" = "Deployed"))
+
+
+merged_data$FullLaps[is.na(merged_data$FullLaps)] <- 0
+
+
+column_to_check <- merged_data$FullLaps
+rows_to_remove <- numeric(0)
+
+for (i in 1:(length(column_to_check) - 1)) {
+  if (column_to_check[i] != 0) {
+    laps_to_delete <- column_to_check[i]  # Get the value to determine how many rows to delete
+    if ((i + laps_to_delete) <= length(column_to_check)) {
+      rows_to_remove <- c(rows_to_remove, (i):(i + laps_to_delete + 1))
+    }
+  }
+}
+
+# Remove the identified rows
+merged_data <- merged_data[-rows_to_remove, ]
+
+
+
+
+
+
+
+
+# new_delta_times = delta_times%>%
+#   left_join(circuit_names, by = "raceId")%>%
+#   left_join(safety_cars_clean, by = c("year", "grand_prix"))
+
+
+unique_combinations <- unique(new_delta_times[, c("Deployed", "Retreated", "FullLaps")])
+
+
+
+ggplot(delta_test, aes(lap, delta_seconds, color = driverRef))+
+  geom_line()
+```
+
+
+```{r}
+library(shiny)
+library(shinydashboard)
+
+# UI
+ui <- dashboardPage(
+  dashboardHeader(),
+  dashboardSidebar(),
+  dashboardBody(
+    fluidRow(
+      box(
+        title = "More Information",
+        width = 4,
+        # Create a button for more information
+        actionButton("more_info_button", "Click for More Info")
+      )
+    )
+  )
+)
+
+# Server
+server <- function(input, output) {
+  # Define an action when the button is clicked
+  observeEvent(input$more_info_button, {
+    # Perform actions or show additional information here
+    # For example, you can update a text output or perform other reactive operations
+    # For demo purposes, displaying a message
+    showModal(modalDialog(
+      title = "More Information",
+      "This is more information that appears when the button is clicked."
+    ))
+  })
+}
+
+# Run the application
+shinyApp(ui, server)
+
+```
+
+```{r}
+# Two example data frames with the same columns
+df1 <- data.frame(
+  A = c(1, 2, 3),
+  B = c("a", "b", "c")
+)
+
+df2 <- data.frame(
+  A = c(4, 5),
+  B = c("d", "e")
+)
+
+# Concatenating the data frames vertically
+combined_df <- rbind(df1, df2)
+
+print(combined_df)
+
+```
+
+```{r}
+library(shiny)
+library(shinydashboard)
+library(shinydashboardPlus)
+
+ui <- dashboardPage(
+  dashboardHeader(),
+  dashboardSidebar(),
+  dashboardBody(
+    boxPlus(
+      title = "Box 1",
+      plotOutput("plot1"),
+      height = "100%"
+    ),
+    boxPlus(
+      title = "Box 2",
+      plotOutput("plot2"),
+      height = "100%"
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$plot1 <- renderPlot({
+    # Your plot for box 1
+    hist(rnorm(100))
+  })
+
+  output$plot2 <- renderPlot({
+    # Your plot for box 2
+    boxplot(rnorm(100) ~ factor(sample(1:3, 100, replace = TRUE)))
+  })
+}
+
+shinyApp(ui, server)
+
+```
+
+```{r}
+library(lubridate)
+
+today_date <- Sys.Date()
+age <- today_date - drivers$dob
+age <- as.integer(age)
+print(age)
+
+df <- drivers %>%
+  mutate(dob = as.Date(dob))%>%
+  mutate(Age = as.integer(Sys.Date() - dob))
+
+standings_driver$age_at_race <- interval(standings_driver$dob, standings_driver$race_date) %/% years(1)
+
+average_by_year <- standings_driver %>%
+  group_by(year) %>%
+  summarise(avg_value = mean(age_at_race, na.rm = TRUE))
+
+ggplot(average_by_year, aes(year, avg_value))+
+  geom_point()+
+  geom_smooth()
+```
+
+```{r}
+max_points_per_year <- standings_driver %>%
+  group_by(year) %>%
+  filter(driver_points == max(driver_points))
+
+max_points_per_year$age_at_race <- interval(max_points_per_year$dob, max_points_per_year$race_date) %/% years(1)
+
+ggplot(max_points_per_year, aes(year, age_at_race))+
+  geom_point()+
+  geom_line()
+```
+
+```{r}
+driver_team_info = result_data%>%
+  left_join(constructors, by = "constructorId")%>%
+  filter(as.numeric(race_position) <= 3)%>%
+  select(raceId, race_position, driverRef, year, team)
+
+driver_team_wins = driver_team_info%>%
+  filter(driverRef == "Lewis Hamilton")%>%
+  group_by(year, team)%>%
+  count(race_position)
+
+ggplot(driver_team_wins, aes(year, n, fill = team, dodge = race_position)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(x = "Year", y = "Number of Wins", fill = "Team") +
+  theme_minimal()
+```
+
+```{r}
+test = result_data%>%
+  select(race_fastestLapTime)
+
+convert_to_seconds <- function(time_str) {
+  time_components <- strsplit(time_str, "[:.]")[[1]]
+  
+  minutes <- as.numeric(time_components[1])
+  seconds <- as.numeric(time_components[2])
+  milliseconds <- as.numeric(time_components[3])
+  
+  total_seconds <- minutes * 60 + seconds + milliseconds / 1000
+  return(total_seconds)
+}
+
+# Applying the function to the entire column using sapply
+test$race_fastestLapTime <- sapply(test$race_fastestLapTime, convert_to_seconds)
+
+
+```
+
+
+```{r}
+test = race_data
+
+test <- test %>%
+  mutate(lap_time_seconds = lap_time_milliseconds / 1000)
+
+test_plot = test%>%
+  filter(driverRef == "Lewis Hamilton", year == 2023, Circuit == "Bahrain International Circuit")
+
+
+q1 <- quantile(test_plot$lap_time_seconds, 0.25)
+q3 <- quantile(test_plot$lap_time_seconds, 0.75)
+iqr <- q3 - q1
+
+lower_bound <- q1 - 1.5 * iqr
+upper_bound <- q3 + 1.5 * iqr
+
+outliers <- test_plot$lap_time_seconds < lower_bound | test_plot$lap_time_seconds > upper_bound
+
+clean_lap_times <- test_plot[!outliers, ]
+
+
+ggplot(clean_lap_times, aes(lap, lap_time_seconds, color = driverRef))+
+  geom_line()+
+  scale_x_continuous(breaks = seq(1, max(clean_lap_times$lap), by = 2))
+```
+
+```{r}
+library(shiny)
+library(shinydashboard)
+
+# UI
+ui <- dashboardPage(
+  dashboardHeader(title = "Checkbox Example"),
+  dashboardSidebar(),
+  dashboardBody(
+    fluidRow(
+      box(
+        title = "Checkbox Example",
+        width = 6,
+        checkboxInput("my_checkbox", "Check me", value = FALSE)
+      )
+    )
+  )
+)
+
+# Server
+server <- function(input, output) {
+  # You can use input$my_checkbox in your server logic to access the checkbox value
+  observe({
+    if (input$my_checkbox) {
+      # Perform some action when the checkbox is checked
+      print("Checkbox is checked!")
+    } else {
+      # Perform some action when the checkbox is unchecked
+      print("Checkbox is unchecked!")
+    }
+  })
+}
+
+# Run the application
+shinyApp(ui, server)
+
+```
+
+```{r}
+driver_filter = result_data%>%
+      filter(driverRef == "Lewis Hamilton")%>%
+      mutate(race_position = as.numeric(race_position))
+
+test1 = result_data%>%
+        select(constructorId, driverRef, year)%>%
+        left_join(constructors, by = "constructorId")
+      
+      data_line_plot_clean = driver_filter%>%
+        left_join(test1, by = c("driverRef", "year"))%>%
+        unique()
+    
+    counter = data_line_plot_clean%>%
+      group_by(team, race_position)%>%
+      count(race_position)
+    
+    data_summary <- counter %>%
+  group_by(race_position) %>%
+  mutate(total = sum(n, na.rm = TRUE))
+
+    
+    # counter_total = driver_filter%>%
+    #   count(race_position)%>%
+    #   rename(total = n)
+    
+    ggplot(counter, aes(race_position, n, fill = team))+
+      geom_bar(stat = "identity")+
+      coord_flip()+
+      labs(x = "Fianl Position", y = "Count")+
+      scale_x_reverse(breaks = seq(1, max(na.omit(driver_filter$race_position)), by = 1))+
+      theme_minimal()+
+      theme(panel.grid.minor = element_blank(),
+            plot.background = element_rect(fill = background_color, color = background_color),
+            axis.text = element_text(color = axis_color, size = axis_size),
+            axis.text.y = element_text(hjust = 0.9),
+            panel.grid.major = element_line(color = grid_major_color),
+            panel.grid.major.y = element_blank(),
+            axis.title = element_text(color = title_color, size = axis_title_size))+
+    scale_y_continuous(breaks = seq(0, max(na.omit(counter$n)) + 4, by = 10), limits = c(0, max(na.omit(counter$n)) + 4), na.value = NA)
+```
+
+```{r}
+library(DT)
+
+# Sample data
+df <- data.frame(
+  driver_name = c("Lewis Hamilton", "Max Verstappen", "Charles Leclerc", "Lewis Hamilton", "Valtteri Bottas"),
+  points = c(100, 90, 85, 105, 80)
+)
+
+# Name of the driver to highlight
+highlight_driver <- "Lewis Hamilton"
+
+# Create a DataTable
+datatable(df) %>%
+  formatStyle(
+    'driver_name',
+    target = 'row',
+    backgroundColor = styleEqual(unique(df$driver_name), c('white', 'yellow')), 
+    valueColumns = highlight_driver
+  )
+
+
+```
+
+```{r}
+library(mapview)
+
+# Generate sample data with coordinates and image URLs
+data <- data.frame(
+  lon = runif(10, -180, 180),
+  lat = runif(10, -90, 90),
+  image_url = c(
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150",
+    "https://via.placeholder.com/150"
+  )
+)
+
+test = total_active_races %>%
+      filter(Year == 2023)
+
+
+```
+
+```{r}
+test = standings_driver%>%
+  group_by(year)%>%
+  filter(driver_points == max(driver_points))%>%
+  select(driver_points, driverRef, year)%>%
+  unique()%>%
+  ungroup()%>%
+  count(driverRef)
+
+ggplot(test, aes(reorder(driverRef, n), n))+
+  geom_bar(stat = "identity")+
+  labs(x = "Driver", y = "Number of World Championships")+
+  coord_flip()+
+  theme_minimal()+
+  theme(
+            panel.grid.minor = element_blank(),
+            plot.background = element_rect(fill = background_color, color = background_color),
+            axis.text = element_text(color = axis_color, size = axis_size),
+            axis.text.y = element_text(hjust = 0.9),
+            panel.grid.major = element_line(color = grid_major_color),
+            panel.grid.major.y = element_blank(),
+            axis.title = element_text(color = title_color, size = axis_title_size)
+          )+
+  scale_y_continuous(breaks = seq(0, max(test$n), by = 1))
+```
+

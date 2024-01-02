@@ -1,0 +1,504 @@
+---
+title: "F1_Data"
+author: "Cameron Bayer"
+date: "2023-10-11"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(sf)
+library(mapview)
+
+circuits = read_csv("f1db_csv/circuits.csv")
+constructor_results = read_csv("f1db_csv/constructor_results.csv")
+constructor_standings = read_csv("f1db_csv/constructor_standings.csv")
+constructors = read_csv("f1db_csv/constructors.csv")
+driver_standings = read_csv("f1db_csv/driver_standings.csv")
+drivers = read_csv("f1db_csv/drivers.csv")
+lap_times = read_csv("f1db_csv/lap_times.csv")
+pit_stops = read_csv("f1db_csv/pit_stops.csv")
+qualifying = read_csv("f1db_csv/qualifying.csv")
+races = read_csv("f1db_csv/races.csv")
+results = read_csv("f1db_csv/results.csv")
+sprint_results = read_csv("f1db_csv/sprint_results.csv")
+status = read_csv("f1db_csv/status.csv")
+```
+
+
+```{r}
+# circuits 
+names(circuits)[3] = "Circuit"
+circuits = circuits%>%
+  select(-url)%>%
+  mutate(alt = as.integer(alt), 
+         circuitRef = factor(circuitRef),
+         location = factor(location),
+         country = factor(country))
+
+
+# constructor_results 
+names(constructor_results)[4] = "constructor_points"
+constructor_results = constructor_results%>%
+  select(-status)
+
+
+# constructor_standings 
+names(constructor_standings)[4] = "constructor_total_points"
+names(constructor_standings)[5] = "constructor_position"
+names(constructor_standings)[7] = "race_win"
+constructor_standings = constructor_standings%>%
+  select(-positionText)
+
+
+# constructors 
+names(constructors)[3] = "team"
+constructors = constructors%>%
+  select(-url)%>%
+  mutate(constructorRef = factor(constructorRef),
+         team = factor(team),
+         nationality = factor(nationality))
+
+
+# driver_standings 
+names(driver_standings)[4] = "driver_points"
+names(driver_standings)[5] = "driver_position"
+names(driver_standings)[7] = "driver_win"
+driver_standings = driver_standings%>%
+  select(-positionText)
+
+
+# drivers 
+names(drivers)[3] = "driver_number"
+names(drivers)[4] = "driver_code"
+names(drivers)[8] = "driver_nationality"
+drivers = drivers%>%
+  select(-url)%>%
+  mutate(driverRef = factor(driverRef),
+         driver_nationality = factor(driver_nationality))
+
+
+# lap_times 
+names(lap_times)[4] = "lap_times_position"
+names(lap_times)[5] = "lap_time"
+names(lap_times)[6] = "lap_time_milliseconds"
+
+
+# pit_stops 
+names(pit_stops)[3] = "stops"
+names(pit_stops)[5] = "pit_stop_time"
+names(pit_stops)[6] = "pit_stop_duration"
+names(pit_stops)[7] = "pit_stop_duration_milliseconds"
+pit_stops = pit_stops%>% 
+  mutate(pit_stop_duration = as.numeric(pit_stop_duration)) 
+
+
+# qualifying 
+names(qualifying)[5] = "driver_number"
+names(qualifying)[6] = "qualifying_position"
+
+
+# races 
+names(races)[5] = "grand_prix"
+names(races)[6] = "race_date"
+names(races)[7] = "race_time"
+races = races%>%
+  select(raceId:race_time)
+
+
+# results 
+names(results)[5] = "driver_number"
+names(results)[6] = "starting_grid_position"
+names(results)[7] = "race_position"
+names(results)[8] = "race_positionText"
+names(results)[9] = "race_positionOrder"
+names(results)[10] = "race_points"
+names(results)[11] = "race_laps"
+names(results)[12] = "race_time"
+names(results)[13] = "race_time_milliseconds"
+names(results)[14] = "race_fastestLap"
+names(results)[15] = "race_rank"
+names(results)[16] = "race_fastestLapTime"
+names(results)[17] = "race_fastestLapSpeed"
+drivers = drivers%>%
+  select(-driver_number)
+# results = results%>%
+#   mutate(milliseconds = as.numeric(milliseconds),
+#          fastestLap = as.numeric(fastestLap),
+#          rank = as.numeric(rank),
+#          fastestLapSpeed = as.numeric(fastestLapSpeed))
+
+
+# sprint_results 
+names(sprint_results)[5] = "driver_number"
+names(sprint_results)[6] = "sprint_grid"
+names(sprint_results)[7] = "sprint_position"
+names(sprint_results)[8] = "sprint_positionText"
+names(sprint_results)[9] = "sprint_positionOrder"
+names(sprint_results)[10] = "sprint_points"
+names(sprint_results)[11] = "sprint_laps"
+names(sprint_results)[12] = "sprint_time"
+names(sprint_results)[13] = "sprint_time_milliseconds"
+names(sprint_results)[14] = "sprint_fastestLap"
+names(sprint_results)[15] = "sprint_fastestLapTime"
+# sprint_results = sprint_results%>%
+#   mutate(milliseconds = as.numeric(milliseconds),
+#          fastestLap = as.numeric(fastestLap))
+```
+
+Note: I have cleaned each individual dataset that was provided. However, I have not joined all of the datasets together to create one giant dataset. I have joined specific datasets so that I have a complete set for each F1 stage. I have 7 datasets, but each one has been joined on important information such as driverId, raceId, constructorId, and circuitId. I decided to leave these 7 new datasets separate because I did not want to create a dataset that was to large and that contained to much redundant information. 
+
+```{r}
+years = races%>%
+  select(raceId, year)
+
+
+constructor_data = constructors%>%
+  full_join(constructor_standings, by = "constructorId")%>%
+  full_join(constructor_results, by = c("constructorId", "raceId"))%>%
+  full_join(years, by = "raceId")
+
+
+circuit_races =  circuits%>%
+  full_join(races, by = "circuitId")
+
+
+race_data = lap_times%>%
+  full_join(pit_stops, by = c("raceId", "driverId", "lap"))%>%
+  full_join(drivers, by = "driverId")
+
+
+standings_driver = driver_standings%>%
+  full_join(drivers, by = "driverId")%>%
+  full_join(races, by = "raceId")
+
+
+qualifying_data = qualifying%>%
+  full_join(drivers, by = "driverId")%>%
+  full_join(constructors, by = "constructorId")
+
+
+sprint_data = sprint_results%>%
+  full_join(drivers, by = "driverId")
+
+
+result_data = results%>%
+  full_join(drivers, by = "driverId")
+```
+
+```{r}
+
+write.csv(constructor_data, file = "constructor_data.csv")
+write.csv(circuit_races, file = "circuit_races.csv")
+write.csv(race_data, file = "race_data.csv")
+write.csv(standings_driver, file = "standings_driver.csv")
+write.csv(qualifying_data, file = "qualifying_data.csv")
+write.csv(sprint_data, file = "sprint_data.csv")
+write.csv(result_data, file = "result_data.csv")
+
+```
+
+
+This first graph is very simple. It is just a line graph that shows the total number of points Max Verstappen has scored for every year he's been in Formula 1. I intend to make a shiny app that allows me to choose which driver I would like to look at as well as specify a year, which will then filter my data to display a line graph with the specfied year highlighted. 
+
+```{r}
+races_ver = standings_driver%>%
+  filter(driverRef == "max_verstappen")
+
+ggplot(races_ver, aes(round, driver_points, color = factor(year)))+
+  geom_line()+
+  labs(title = "Max Verstappen's Race Points", x = "Round", y = "Points")
+```
+
+This plot is showing the total number of constructor points each team got over the past 4 years (I will of course explain what all of these F1 terms are in the final project to make it more clear). I still plan to allow the user to color code based on team and other variables that way trends for multiple teams can be extracted. 
+
+```{r}
+result <- constructor_data %>%
+  filter(year >= 2020)%>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))
+
+ggplot(result, aes(fct_reorder(team, +max_value), max_value))+
+  geom_bar(stat = "identity")+
+  labs(title = "2022 Constructors Championship", x = "Team", y = "Points")+
+  coord_flip()+
+  facet_wrap(~year, ncol = 1)
+```
+
+This following visualization is the location of every single Formula 1 racing track that has been used since 1950. I thought this was a good start. I will further use this graph to plot the altitudes for each race as well as do some sort of heat map as another visualization so people can see which countries have the highest number of F1 races. 
+
+```{r}
+mapview(circuits, xcol = "lng", ycol = "lat", crs = 4269, grid = FALSE)
+```
+
+This slopegraph depicts total constructor points from year to year. This will show how the teams have performed year to year and how certain regulations ahve cause various teams to suffer or excel. 
+
+```{r}
+constructor_21_22 = constructor_data%>%
+  filter(year %in% c(2021,2022))
+
+result_21_22 <- constructor_21_22 %>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))
+
+result_2021 = result_21_22%>%
+  filter(year == 2021)
+
+result_2022 = result_21_22%>%
+  filter(year == 2022)
+
+slopegraph <- ggplot(data = result_21_22, aes(x = year, y = max_value, group = team, color = team)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  geom_text(aes(label = max_value, vjust = -0.5), position = position_dodge(0.2), size = 4) +
+  scale_x_continuous(breaks = c(2021, 2022), labels = c("2021", "2022")) +
+  labs(
+    x = "Year",
+    y = "Max Value",
+    title = "Slopegraph of Max Values for Each Team (2021-2022)"
+  ) +
+  theme_minimal()
+
+# Display the slopegraph
+print(slopegraph)
+
+#----------------------------------------------------------------------------------
+
+team_colors <- c("Red Bull" = "red", "Other Teams" = "gray")
+
+# Create a slopegraph using ggplot2 with customized colors
+slopegraph <- ggplot(data = result_21_22, aes(x = year, y = max_value, group = team, color = team)) +
+  geom_line(aes(x = year), size = 1) +
+  geom_point(aes(x = year), size = 3) +
+  geom_text(aes(label = max_value, vjust = -0.5), position = position_dodge(0.2), size = 4) +
+  scale_x_continuous(breaks = c(2021, 2022), labels = c("2021", "2022")) +
+  scale_color_manual(values = team_colors) +  # Set custom colors
+  labs(
+    x = "Year",
+    y = "Max Value",
+    title = "Slopegraph of Max Values for Each Team (2021-2022)"
+  ) +
+  theme_minimal()
+
+# Display the slopegraph
+print(slopegraph)
+
+
+```
+
+
+
+
+```{r}
+library(shiny)
+
+ui <- fluidPage(
+  titlePanel("Line Plot Shiny App"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput("name", "Enter a name:", ""),
+      selectInput("year", "Select a year:", choices = sort(unique(standings_driver$year)))
+    ),
+    mainPanel(
+      plotOutput("line_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  filtered_data <- reactive({
+    subset(standings_driver, driverRef == input$name)
+  })
+  
+  output$line_plot <- renderPlot({
+    ggplot(filtered_data(), aes(x = round, y = driver_points, group = year, color = factor(year))) +
+      geom_line(aes(color = "grey"), size = 1) +
+      geom_line(data = filtered_data()%>%filter(year == input$year), aes(color = "red"), size = 1) +
+      labs(title = "Points Over Rounds",
+           x = "Round",
+           y = "Points",
+           color = "Year")+
+      scale_color_manual(values = c("grey" = "grey", "red" = "red"))
+      # theme_minimal()
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r}
+library(shiny)
+
+ui <- fluidPage(
+  titlePanel("Line Plot Shiny App"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("start_year", "Select a starting year:", choices = sort(unique(constructor_data$year))),
+      selectInput("end_year", "Select an end year:", choices = sort(unique(constructor_data$year))),
+      selectInput("team", "Select a team:", choices = sort(unique(constructor_data$team)))
+    ),
+    mainPanel(
+      plotOutput("line_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  filtered_data <- reactive({
+  start_year <- as.integer(input$start_year)
+  end_year <- as.integer(input$end_year)
+
+  subset(constructor_data, year %in% c(start_year, end_year)) %>%
+    group_by(team, year) %>%
+    summarize(max_value = max(constructor_total_points))
+  })
+
+  
+  output$line_plot <- renderPlot({
+    selected_team = input$team
+    
+    ggplot(filtered_data(), aes(x = year, y = max_value, group = team, color = team)) +
+      geom_line(size = 1) +
+      geom_point(size = 3) +
+      geom_line(data = filtered_data()%>%filter(team == input$team), color = "red", size = 1) +
+      geom_point(data = filtered_data()%>%filter(team == input$team), color = "red", size = 3) +
+      scale_color_manual(values = c(selected_team = "red", "Other Teams" = "gray")) +
+      #scale_color_viridis_d()+
+      labs(
+        x = "Year",
+        y = "Max Value",
+        title = "Slopegraph of Max Values for Each Team (2021-2022)"
+      ) 
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r}
+teams <- c("Red Bull", "Ferrari", "Mercedes", "Alpine F1 Team", "McLaren", "Aston Martin", "Alfa Romeo", "Haas F1 Team", "AlphaTauri", "Williams")
+
+const = constructor_data %>%
+  group_by(team, year) %>%
+  summarize(max_value = max(constructor_total_points))%>%
+  filter(team %in% teams)
+
+ggplot(data = const, aes(x = year, y = max_value, group = team, color = team)) +
+  geom_point() +
+  labs(
+    x = "Year",
+    y = "Max Value",
+    title = "Slopegraph of Max Values for Each Team (2021-2022)"
+  ) 
+  # theme_minimal()
+```
+
+
+```{r}
+constructor_bind = results%>%
+  select(raceId, driverId, constructorId)
+
+standings_driver = standings_driver%>%
+  full_join(constructor_bind, by = c("raceId", "driverId"))
+
+standings_driver = standings_driver%>%
+  full_join(constructors, by = "constructorId")
+
+races_ham = standings_driver%>%
+  filter(driverRef == "hamilton")
+```
+
+```{r}
+hamilton = ggplot(races_ham, aes(round, driver_points, group = factor(year)))+
+  geom_line() +
+  geom_line(data = races_ham%>%filter(constructorRef == "mercedes" & year < 2021), color = "red")+
+  geom_line(data = races_ham%>%filter(constructorRef == "mercedes" & year >= 2021), color = "blue")+
+  labs(title = "Hamilton's Race Points", x = "Round", y = "Points")+
+  theme_minimal()
+```
+
+```{r}
+# results = results%>%
+#   full_join(years, by = "raceId")
+# 
+# dplyr::filter(year>2015) %>% 
+#   dplyr::group_by(name,year) %>% 
+#   summarize(medianFastestLapSpeed = median(fastestLapSpeed,na.rm=T)) %>% 
+#   ggplot(aes(x=factor(year),y= medianFastestLapSpeed,color=medianFastestLapSpeed)) + 
+#   geom_point() + theme_minimal() + 
+# 
+# ggplot(results)
+```
+
+```{r}
+# ggplot(circuit_races, aes(x = lng, y = lat)) +
+#   geom_tile(aes(fill = ..density..), width = 0.02) +
+#   scale_fill_gradient(low = "white", high = "red") +
+#   theme_minimal()
+
+```
+```{r}
+results$fastestLapSpeed<-as.numeric(results$fastestLapSpeed)
+convertFastestLap<-function(x){
+    if(length(x)>0){
+        curMinute<-as.numeric(strsplit(x,":")[[1]][1])
+        curSecond<-as.numeric(strsplit(strsplit(x,":")[[1]][2],"\\.")[[1]][1])
+        return(curMinute*60 + curSecond)
+        }
+        else if(length(x)==0){
+            return(NA)
+        }
+}
+results$fastestLapTimeNum<-sapply(results$fastestLapTime, convertFastestLap)
+
+
+races$date<-as.Date(races$date,"%Y-%m-%d")
+races$name<-gsub(" Grand Prix","",races$name)
+
+results_2<-left_join(
+  results %>% dplyr::select(-time, -fastestLapTime), 
+  races %>% dplyr::select(-time, -url), 
+  by='raceId')
+
+races<-left_join(races %>% select(-name,-url), circuits %>% select(-url), by='circuitId')
+```
+
+```{r}
+results_2 %>% 
+  dplyr::filter(year>2015) %>% 
+  dplyr::group_by(name,year) %>% 
+  summarize(medianFastestLapSpeed = median(fastestLapSpeed,na.rm=T)) %>% 
+  ggplot(aes(x=factor(year),y= medianFastestLapSpeed,color=medianFastestLapSpeed)) + 
+  geom_point() + theme_minimal() + 
+  scale_color_gradientn(name="",colours=rev(viridis::viridis(20))) +
+  theme(
+    axis.text.x = element_text(size=6,angle=45),
+    strip.text.x = element_text(size = 10)) + facet_wrap(~name,ncol=9) + 
+  labs(title='Fastest Lap per Circuit, from 2005 to 2017',
+       subtitle='speed in km/h') +
+  guides(color=FALSE)
+```
+
+```{r}
+results_2 %>% 
+  dplyr::filter(year>2004) %>% 
+  dplyr::group_by(name,year) %>% 
+  summarize(medianFastestLapSpeed = median(fastestLapSpeed,na.rm=T)) %>% 
+  ggplot(aes(x=factor(year),y= medianFastestLapSpeed,color=medianFastestLapSpeed)) + 
+  geom_boxplot(alpha=.25) + theme_minimal() + 
+  geom_jitter(shape=16,position=position_jitter(0.2),size=1.5) + 
+  geom_smooth(method='loess',aes(group=1),color='red',lty=2,size=.5) +
+  scale_color_gradientn(name="",colours=rev(viridis::viridis(20))) + 
+  labs(title='Fastest Lap per Year',
+       subtitle='in km/h, grouped by Grand Prix') + 
+  guides(color = FALSE)
+```
+

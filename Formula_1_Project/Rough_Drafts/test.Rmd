@@ -1,0 +1,66 @@
+---
+title: "Untitled"
+author: "Cameron Bayer"
+date: "2023-11-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(shiny)
+
+# Sample data for drivers and teams
+drivers_data <- data.frame(
+  Driver = c("Lewis Hamilton", "Max Verstappen", "Valtteri Bottas", "Lando Norris"),
+  Team = c("Mercedes", "Red Bull Racing", "Mercedes", "McLaren"),
+  Points = c(365, 317, 190, 186)
+)
+
+teams_data <- data.frame(
+  Team = c("Mercedes", "Red Bull Racing", "McLaren"),
+  Principal = c("Toto Wolff", "Christian Horner", "Zak Brown"),
+  Headquarters = c("Brackley, UK", "Milton Keynes, UK", "Woking, UK")
+)
+
+ui <- fluidPage(
+  titlePanel("Formula 1 Dashboard"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("tab_selector", "Select a Tab", 
+                  choices = c("Drivers", "Teams"),
+                  selected = "Drivers"
+      ),
+      # You can add additional filters or input controls here if needed
+    ),
+    mainPanel(
+      uiOutput("selected_tab"),
+      dataTableOutput("table_output")
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  output$selected_tab <- renderUI({
+    if (input$tab_selector == "Drivers") {
+      tabPanel("Drivers", value = "Drivers")
+    } else if (input$tab_selector == "Teams") {
+      tabPanel("Teams", value = "Teams")
+    }
+  })
+
+  output$table_output <- renderDataTable({
+    if (input$tab_selector == "Drivers") {
+      datatable(drivers_data)
+    } else if (input$tab_selector == "Teams") {
+      datatable(teams_data)
+    }
+  })
+}
+
+shinyApp(ui, server)
+```
+

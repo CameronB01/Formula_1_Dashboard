@@ -1,0 +1,13 @@
+name: Formula_1_Dashboard
+title: Formula_1_Dashboard
+username: jyh3zo-cameron-bayer
+account: jyh3zo-cameron-bayer
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10613640
+bundleId: 7975194
+url: https://jyh3zo-cameron-bayer.shinyapps.io/Formula_1_Dashboard/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .RData|accidents/virtual_safety_car_estimates.json|clean_data.zip|Dashboard_Rough_Draft.html|Dashboard_Rough_Draft.pdf|Dashboard_Rough_Draft.Rmd|EDA/502_F1_EDA.pdf|EDA/502_F1_EDA.Rmd|EDA/Questions_and_Big Idea.pdf|f1_data.html|f1_data.ipynb|f1_data.Rmd|F1_Rough_Draft.Rmd|f1db_csv.zip|f1db_csv(1).zip|Formula_1_Dashboard.Rmd|test.Rmd
