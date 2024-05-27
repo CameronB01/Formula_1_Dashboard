@@ -1,3 +1,4 @@
+## Formula 1 Drivers, Teams, and Trends
 This project analyzes the performance of Formula 1 drivers and teams, as well as various trends in the sport. It includes races up until the end of the 2023 season.
 
 Here is the link to this dashboard: https://jyh3zo-cameron-bayer.shinyapps.io/Formula_1_Dashboard/
